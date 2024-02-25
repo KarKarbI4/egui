@@ -299,10 +299,10 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
 
     runner_ref.add_event_listener(
         &canvas,
-        "mousedown",
-        |event: web_sys::MouseEvent, runner: &mut AppRunner| {
+        "pointerdown",
+        |event: web_sys::PointerEvent, runner: &mut AppRunner| {
             if let Some(button) = button_from_mouse_event(&event) {
-                let pos = pos_from_mouse_event(runner.canvas_id(), &event);
+                let pos = pos_from_pointer_event(&event);
                 let modifiers = runner.input.raw.modifiers;
                 runner.input.raw.events.push(egui::Event::PointerButton {
                     pos,
@@ -325,9 +325,9 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
 
     runner_ref.add_event_listener(
         &canvas,
-        "mousemove",
-        |event: web_sys::MouseEvent, runner| {
-            let pos = pos_from_mouse_event(runner.canvas_id(), &event);
+        "pointermove",
+        |event: web_sys::PointerEvent, runner| {
+            let pos = pos_from_pointer_event(&event);
             runner.input.raw.events.push(egui::Event::PointerMoved(pos));
             runner.needs_repaint.repaint_asap();
             event.stop_propagation();
@@ -335,34 +335,38 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
         },
     )?;
 
-    runner_ref.add_event_listener(&canvas, "mouseup", |event: web_sys::MouseEvent, runner| {
-        if let Some(button) = button_from_mouse_event(&event) {
-            let pos = pos_from_mouse_event(runner.canvas_id(), &event);
-            let modifiers = runner.input.raw.modifiers;
-            runner.input.raw.events.push(egui::Event::PointerButton {
-                pos,
-                button,
-                pressed: false,
-                modifiers,
-            });
+    runner_ref.add_event_listener(
+        &canvas,
+        "pointerup",
+        |event: web_sys::PointerEvent, runner| {
+            if let Some(button) = button_from_pointer_event(&event) {
+                let pos = pos_from_pointer_event(&event);
+                let modifiers = runner.input.raw.modifiers;
+                runner.input.raw.events.push(egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed: false,
+                    modifiers,
+                });
 
-            // In Safari we are only allowed to write to the clipboard during the
-            // event callback, which is why we run the app logic here and now:
-            runner.logic();
+                // In Safari we are only allowed to write to the clipboard during the
+                // event callback, which is why we run the app logic here and now:
+                runner.logic();
 
-            // Make sure we paint the output of the above logic call asap:
-            runner.needs_repaint.repaint_asap();
+                // Make sure we paint the output of the above logic call asap:
+                runner.needs_repaint.repaint_asap();
 
-            text_agent::update_text_agent(runner);
-        }
-        event.stop_propagation();
-        event.prevent_default();
-    })?;
+                text_agent::update_text_agent(runner);
+            }
+            event.stop_propagation();
+            event.prevent_default();
+        },
+    )?;
 
     runner_ref.add_event_listener(
         &canvas,
-        "mouseleave",
-        |event: web_sys::MouseEvent, runner| {
+        "pointerleave",
+        |event: web_sys::PointerEvent, runner| {
             runner.input.raw.events.push(egui::Event::PointerGone);
             runner.needs_repaint.repaint_asap();
             event.stop_propagation();

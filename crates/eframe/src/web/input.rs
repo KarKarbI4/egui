@@ -1,11 +1,20 @@
-use super::{canvas_element, canvas_origin, AppRunner};
+use super::{canvas_origin, AppRunner};
 
-pub fn pos_from_mouse_event(canvas_id: &str, event: &web_sys::MouseEvent) -> egui::Pos2 {
-    let canvas = canvas_element(canvas_id).unwrap();
-    let rect = canvas.get_bounding_client_rect();
+pub fn pos_from_pointer_event(event: &web_sys::PointerEvent) -> egui::Pos2 {
     egui::Pos2 {
-        x: event.client_x() as f32 - rect.left() as f32,
-        y: event.client_y() as f32 - rect.top() as f32,
+        x: event.offset_x() as f32,
+        y: event.offset_y() as f32,
+    }
+}
+
+pub fn button_from_pointer_event(event: &web_sys::PointerEvent) -> Option<egui::PointerButton> {
+    match event.button() {
+        0 => Some(egui::PointerButton::Primary),
+        1 => Some(egui::PointerButton::Middle),
+        2 => Some(egui::PointerButton::Secondary),
+        3 => Some(egui::PointerButton::Extra1),
+        4 => Some(egui::PointerButton::Extra2),
+        _ => None,
     }
 }
 
@@ -53,8 +62,8 @@ pub fn pos_from_touch_event(
 
 fn pos_from_touch(canvas_origin: egui::Pos2, touch: &web_sys::Touch) -> egui::Pos2 {
     egui::Pos2 {
-        x: touch.page_x() as f32 - canvas_origin.x,
-        y: touch.page_y() as f32 - canvas_origin.y,
+        x: touch.client_x() as f32 - canvas_origin.x,
+        y: touch.client_y() as f32 - canvas_origin.y,
     }
 }
 
