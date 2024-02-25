@@ -1,4 +1,4 @@
-use super::{canvas_origin, AppRunner};
+use super::AppRunner;
 
 pub fn pos_from_pointer_event(event: &web_sys::PointerEvent) -> egui::Pos2 {
     egui::Pos2 {
@@ -18,68 +18,18 @@ pub fn button_from_pointer_event(event: &web_sys::PointerEvent) -> Option<egui::
     }
 }
 
-pub fn button_from_mouse_event(event: &web_sys::MouseEvent) -> Option<egui::PointerButton> {
-    match event.button() {
-        0 => Some(egui::PointerButton::Primary),
-        1 => Some(egui::PointerButton::Middle),
-        2 => Some(egui::PointerButton::Secondary),
-        3 => Some(egui::PointerButton::Extra1),
-        4 => Some(egui::PointerButton::Extra2),
-        _ => None,
-    }
-}
-
-/// A single touch is translated to a pointer movement. When a second touch is added, the pointer
-/// should not jump to a different position. Therefore, we do not calculate the average position
-/// of all touches, but we keep using the same touch as long as it is available.
-///
-/// `touch_id_for_pos` is the [`TouchId`](egui::TouchId) of the [`Touch`](web_sys::Touch) we previously used to determine the
-/// pointer position.
-pub fn pos_from_touch_event(
-    canvas_id: &str,
-    event: &web_sys::TouchEvent,
-    touch_id_for_pos: &mut Option<egui::TouchId>,
-) -> egui::Pos2 {
-    let touch_for_pos = if let Some(touch_id_for_pos) = touch_id_for_pos {
-        // search for the touch we previously used for the position
-        // (unfortunately, `event.touches()` is not a rust collection):
-        (0..event.touches().length())
-            .map(|i| event.touches().get(i).unwrap())
-            .find(|touch| egui::TouchId::from(touch.identifier()) == *touch_id_for_pos)
-    } else {
-        None
-    };
-    // Use the touch found above or pick the first, or return a default position if there is no
-    // touch at all. (The latter is not expected as the current method is only called when there is
-    // at least one touch.)
-    touch_for_pos
-        .or_else(|| event.touches().get(0))
-        .map_or(Default::default(), |touch| {
-            *touch_id_for_pos = Some(egui::TouchId::from(touch.identifier()));
-            pos_from_touch(canvas_origin(canvas_id), &touch)
-        })
-}
-
-fn pos_from_touch(canvas_origin: egui::Pos2, touch: &web_sys::Touch) -> egui::Pos2 {
-    egui::Pos2 {
-        x: touch.client_x() as f32 - canvas_origin.x,
-        y: touch.client_y() as f32 - canvas_origin.y,
-    }
-}
-
-pub fn push_touches(runner: &mut AppRunner, phase: egui::TouchPhase, event: &web_sys::TouchEvent) {
-    let canvas_origin = canvas_origin(runner.canvas_id());
-    for touch_idx in 0..event.changed_touches().length() {
-        if let Some(touch) = event.changed_touches().item(touch_idx) {
-            runner.input.raw.events.push(egui::Event::Touch {
-                device_id: egui::TouchDeviceId(0),
-                id: egui::TouchId::from(touch.identifier()),
-                phase,
-                pos: pos_from_touch(canvas_origin, &touch),
-                force: Some(touch.force()),
-            });
-        }
-    }
+pub fn push_pointer_touch(
+    runner: &mut AppRunner,
+    phase: egui::TouchPhase,
+    event: &web_sys::PointerEvent,
+) {
+    runner.input.raw.events.push(egui::Event::Touch {
+        device_id: egui::TouchDeviceId(0),
+        id: egui::TouchId::from(event.pointer_id()),
+        phase,
+        pos: pos_from_pointer_event(&event),
+        force: Some(event.pressure()),
+    });
 }
 
 /// Web sends all keys as strings, so it is up to us to figure out if it is

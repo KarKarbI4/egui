@@ -301,15 +301,21 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
         &canvas,
         "pointerdown",
         |event: web_sys::PointerEvent, runner: &mut AppRunner| {
-            if let Some(button) = button_from_mouse_event(&event) {
-                let pos = pos_from_pointer_event(&event);
-                let modifiers = runner.input.raw.modifiers;
-                runner.input.raw.events.push(egui::Event::PointerButton {
-                    pos,
-                    button,
-                    pressed: true,
-                    modifiers,
-                });
+            if let Some(button) = button_from_pointer_event(&event) {
+                if event.is_primary() {
+                    let pos = pos_from_pointer_event(&event);
+                    let modifiers = runner.input.raw.modifiers;
+                    runner.input.raw.events.push(egui::Event::PointerButton {
+                        pos,
+                        button,
+                        pressed: true,
+                        modifiers,
+                    });
+                }
+
+                if event.pointer_type() == "touch" {
+                    push_pointer_touch(runner, egui::TouchPhase::Start, &event);
+                }
 
                 // In Safari we are only allowed to write to the clipboard during the
                 // event callback, which is why we run the app logic here and now:
@@ -327,8 +333,15 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
         &canvas,
         "pointermove",
         |event: web_sys::PointerEvent, runner| {
-            let pos = pos_from_pointer_event(&event);
-            runner.input.raw.events.push(egui::Event::PointerMoved(pos));
+            if event.is_primary() {
+                let pos = pos_from_pointer_event(&event);
+                runner.input.raw.events.push(egui::Event::PointerMoved(pos));
+            }
+
+            if event.pointer_type() == "touch" {
+                push_pointer_touch(runner, egui::TouchPhase::Move, &event);
+            }
+
             runner.needs_repaint.repaint_asap();
             event.stop_propagation();
             event.prevent_default();
@@ -339,25 +352,35 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
         &canvas,
         "pointerup",
         |event: web_sys::PointerEvent, runner| {
-            if let Some(button) = button_from_pointer_event(&event) {
-                let pos = pos_from_pointer_event(&event);
-                let modifiers = runner.input.raw.modifiers;
-                runner.input.raw.events.push(egui::Event::PointerButton {
-                    pos,
-                    button,
-                    pressed: false,
-                    modifiers,
-                });
+            if event.is_primary() {
+                if let Some(button) = button_from_pointer_event(&event) {
+                    let pos = pos_from_pointer_event(&event);
+                    let modifiers = runner.input.raw.modifiers;
+                    runner.input.raw.events.push(egui::Event::PointerButton {
+                        pos,
+                        button,
+                        pressed: false,
+                        modifiers,
+                    });
 
-                // In Safari we are only allowed to write to the clipboard during the
-                // event callback, which is why we run the app logic here and now:
-                runner.logic();
+                    // In Safari we are only allowed to write to the clipboard during the
+                    // event callback, which is why we run the app logic here and now:
+                    runner.logic();
 
-                // Make sure we paint the output of the above logic call asap:
-                runner.needs_repaint.repaint_asap();
+                    // Make sure we paint the output of the above logic call asap:
+                    runner.needs_repaint.repaint_asap();
 
-                text_agent::update_text_agent(runner);
+                    text_agent::update_text_agent(runner);
+                }
             }
+            if event.pointer_type() == "touch" {
+                if event.is_primary() {
+                    // Remove hover effect:
+                    runner.input.raw.events.push(egui::Event::PointerGone);
+                }
+                push_pointer_touch(runner, egui::TouchPhase::End, &event);
+            }
+
             event.stop_propagation();
             event.prevent_default();
         },
@@ -367,7 +390,12 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
         &canvas,
         "pointerleave",
         |event: web_sys::PointerEvent, runner| {
-            runner.input.raw.events.push(egui::Event::PointerGone);
+            if event.is_primary() {
+                runner.input.raw.events.push(egui::Event::PointerGone);
+            }
+            if event.pointer_type() == "touch" {
+                push_pointer_touch(runner, egui::TouchPhase::End, &event);
+            }
             runner.needs_repaint.repaint_asap();
             event.stop_propagation();
             event.prevent_default();
@@ -376,72 +404,9 @@ pub(crate) fn install_canvas_events(runner_ref: &WebRunner) -> Result<(), JsValu
 
     runner_ref.add_event_listener(
         &canvas,
-        "touchstart",
-        |event: web_sys::TouchEvent, runner| {
-            let mut latest_touch_pos_id = runner.input.latest_touch_pos_id;
-            let pos = pos_from_touch_event(runner.canvas_id(), &event, &mut latest_touch_pos_id);
-            runner.input.latest_touch_pos_id = latest_touch_pos_id;
-            runner.input.latest_touch_pos = Some(pos);
-            let modifiers = runner.input.raw.modifiers;
-            runner.input.raw.events.push(egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers,
-            });
-
-            push_touches(runner, egui::TouchPhase::Start, &event);
-            runner.needs_repaint.repaint_asap();
-            event.stop_propagation();
-            event.prevent_default();
-        },
-    )?;
-
-    runner_ref.add_event_listener(
-        &canvas,
-        "touchmove",
-        |event: web_sys::TouchEvent, runner| {
-            let mut latest_touch_pos_id = runner.input.latest_touch_pos_id;
-            let pos = pos_from_touch_event(runner.canvas_id(), &event, &mut latest_touch_pos_id);
-            runner.input.latest_touch_pos_id = latest_touch_pos_id;
-            runner.input.latest_touch_pos = Some(pos);
-            runner.input.raw.events.push(egui::Event::PointerMoved(pos));
-
-            push_touches(runner, egui::TouchPhase::Move, &event);
-            runner.needs_repaint.repaint_asap();
-            event.stop_propagation();
-            event.prevent_default();
-        },
-    )?;
-
-    runner_ref.add_event_listener(&canvas, "touchend", |event: web_sys::TouchEvent, runner| {
-        if let Some(pos) = runner.input.latest_touch_pos {
-            let modifiers = runner.input.raw.modifiers;
-            // First release mouse to click:
-            runner.input.raw.events.push(egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers,
-            });
-            // Then remove hover effect:
-            runner.input.raw.events.push(egui::Event::PointerGone);
-
-            push_touches(runner, egui::TouchPhase::End, &event);
-            runner.needs_repaint.repaint_asap();
-            event.stop_propagation();
-            event.prevent_default();
-        }
-
-        // Finally, focus or blur text agent to toggle mobile keyboard:
-        text_agent::update_text_agent(runner);
-    })?;
-
-    runner_ref.add_event_listener(
-        &canvas,
-        "touchcancel",
-        |event: web_sys::TouchEvent, runner| {
-            push_touches(runner, egui::TouchPhase::Cancel, &event);
+        "pointercancel",
+        |event: web_sys::PointerEvent, runner| {
+            push_pointer_touch(runner, egui::TouchPhase::Cancel, &event);
             event.stop_propagation();
             event.prevent_default();
         },

@@ -111,13 +111,6 @@ fn canvas_element_or_die(canvas_id: &str) -> web_sys::HtmlCanvasElement {
         .unwrap_or_else(|| panic!("Failed to find canvas with id {canvas_id:?}"))
 }
 
-fn canvas_origin(canvas_id: &str) -> egui::Pos2 {
-    let rect = canvas_element(canvas_id)
-        .unwrap()
-        .get_bounding_client_rect();
-    egui::pos2(rect.left() as f32, rect.top() as f32)
-}
-
 fn canvas_size_in_points(canvas_id: &str) -> egui::Vec2 {
     let canvas = canvas_element(canvas_id).unwrap();
     let pixels_per_point = native_pixels_per_point();
