@@ -226,6 +226,7 @@ web-sys = { version = "0.3.58", features = [
   "MouseEvent",
   "Navigator",
   "Performance",
+  "PointerEvent",
   "Storage",
   "Touch",
   "TouchEvent",
